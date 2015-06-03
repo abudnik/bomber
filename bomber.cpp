@@ -39,8 +39,8 @@ struct helper
 		return ptr;
 	}
 
-	static const int MAX_KEY_VALUE = 10 * 1000;
-	static const size_t MAX_DATA_SIZE = 1024 * 1024; // 1 Mb
+	static const int MAX_KEY_VALUE = 10 * 1000 * 1000;
+	static const size_t MAX_DATA_SIZE = 64 * 1024; // 64 Kb
 };
 
 
