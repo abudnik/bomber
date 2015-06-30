@@ -14,13 +14,14 @@ struct CommandCodes
 };
 const CommandCodes g_codes[] = {
 	{0, "write"},
-	{1, "read"},
-	{2, "remove"},
-	{3, "set_backend_readonly"},
-	{4, "set_backend_writable"},
-	{5, "start_defrag"},
-	{6, "stat_monitor"},
-	{7, "write_cache"}
+	{1, "plain_write"},
+	{2, "read"},
+	{3, "remove"},
+	{4, "set_backend_readonly"},
+	{5, "set_backend_writable"},
+	{6, "start_defrag"},
+	{7, "stat_monitor"},
+	{8, "write_cache"}
 };
 
 struct helper
@@ -99,6 +100,37 @@ public:
 		std::string key = helper::rand_key();
 		data_pointer data = std::move(helper::rand_data());
 		m_result = m_sess->write_data(key, data, 0, data.size());
+	}
+
+	virtual void wait_result() {
+		if (m_result.is_valid())
+			m_result.wait();
+	}
+
+private:
+	async_write_result m_result;
+};
+
+class plain_writer : public command
+{
+public:
+	plain_writer(file_logger *log, const std::shared_ptr<session> &sess)
+	: command(log, sess)
+	{}
+
+	virtual void exec() {
+		std::string key = helper::rand_key();
+		data_pointer data = std::move(helper::rand_data());
+
+		auto prepare_result = m_sess->write_prepare(key, data, 0, data.size());
+		if (prepare_result.is_valid())
+			prepare_result.wait();
+
+		auto write_result = m_sess->write_plain(key, data, 0);
+		if (write_result.is_valid())
+			write_result.wait();
+
+		m_result = m_sess->write_commit(key, data, 0, data.size());
 	}
 
 	virtual void wait_result() {
@@ -408,13 +440,14 @@ private:
 		const int i = rand() % m_commands.size();
 		switch (m_commands[i]) {
 			case 0: return new writer(&m_log, m_sess);
-			case 1: return new reader(&m_log, m_sess);
-			case 2: return new remover(&m_log, m_sess);
-			case 3: return new backend_readonly_setter(&m_log, m_sess);
-			case 4: return new backend_writable_setter(&m_log, m_sess);
-			case 5: return new defrag_starter(&m_log, m_sess);
-			case 6: return new monitor_stat_getter(&m_log, m_sess);
-			case 7: return new cache_writer(&m_log, m_sess);
+			case 1: return new plain_writer(&m_log, m_sess);
+			case 2: return new reader(&m_log, m_sess);
+			case 3: return new remover(&m_log, m_sess);
+			case 4: return new backend_readonly_setter(&m_log, m_sess);
+			case 5: return new backend_writable_setter(&m_log, m_sess);
+			case 6: return new defrag_starter(&m_log, m_sess);
+			case 7: return new monitor_stat_getter(&m_log, m_sess);
+			case 8: return new cache_writer(&m_log, m_sess);
 		}
 		return nullptr;
 	}
