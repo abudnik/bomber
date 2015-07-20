@@ -24,6 +24,9 @@ const CommandCodes g_codes[] = {
 	{8, "write_cache"}
 };
 
+static int MAX_KEY_VALUE = 10 * 1000 * 1000;
+static size_t MAX_DATA_SIZE = 64 * 1024; // 64 Kb
+
 struct helper
 {
 	static std::string rand_key() {
@@ -39,9 +42,6 @@ struct helper
 		rnd.read(reinterpret_cast<char *>(ptr.data()), ptr.size());
 		return ptr;
 	}
-
-	static const int MAX_KEY_VALUE = 10 * 1000 * 1000;
-	static const size_t MAX_DATA_SIZE = 64 * 1024; // 64 Kb
 };
 
 
@@ -366,21 +366,23 @@ public:
 
 	void init(int argc, char *argv[]) {
 		if (argc < 4)
-			throw std::logic_error("usage: bomber <addr:port:family> <num_threads> <[command_name]* | 'all'>");
+			throw std::logic_error("usage: bomber <addr:port:family> <num_threads> <max_key_value> <max_data_size> <[command_name]* | 'all'>");
 
 		BH_LOG(m_log, DNET_LOG_INFO, "creating addr remote: %s", argv[1])
 			("source", "dnet_add_state");
 
 		address addr = argv[1];
 		m_num_threads = std::stoi(argv[2]);
+		MAX_KEY_VALUE = std::stoi(argv[3]);
+		MAX_DATA_SIZE = std::stoi(argv[4]);
 
-		if (!strcmp(argv[3], "all")) {
+		if (!strcmp(argv[5], "all")) {
 			const size_t num_commands = sizeof(g_codes) / sizeof(g_codes[0]);
 			for (size_t i = 0; i < num_commands; ++i) {
 				m_commands.push_back(i);
 			}
 		} else {
-			for (int i = 3; i < argc; ++i) {
+			for (int i = 5; i < argc; ++i) {
 				const auto it = std::find_if(std::begin(g_codes), std::end(g_codes),
 						       [i, argv] (const CommandCodes &code) -> bool { return !strcmp(argv[i], code.command); } );
 
