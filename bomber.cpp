@@ -121,16 +121,22 @@ public:
 	virtual void exec() {
 		std::string key = helper::rand_key();
 		data_pointer data = std::move(helper::rand_data());
+		const size_t num_iter = 3;
+		const size_t total_size = (num_iter + 2) * data.size();
 
-		auto prepare_result = m_sess->write_prepare(key, data, 0, data.size());
+		auto prepare_result = m_sess->write_prepare(key, data, 0, total_size);
 		if (prepare_result.is_valid())
 			prepare_result.wait();
 
-		auto write_result = m_sess->write_plain(key, data, 0);
-		if (write_result.is_valid())
-			write_result.wait();
+		uint64_t remote_offset = data.size();
+		for (size_t i = 0; i < num_iter; ++i) {
+			auto write_result = m_sess->write_plain(key, data, remote_offset);
+			if (write_result.is_valid())
+				write_result.wait();
+			remote_offset += data.size();
+		}
 
-		m_result = m_sess->write_commit(key, data, 0, data.size());
+		m_result = m_sess->write_commit(key, data, remote_offset, total_size);
 	}
 
 	virtual void wait_result() {
