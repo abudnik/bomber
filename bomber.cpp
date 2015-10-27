@@ -372,8 +372,21 @@ public:
 	}
 
 	void init(int argc, char *argv[]) {
+		char ch;
+		const char *config_path = nullptr;
+
+		while ((ch = getopt(argc, argv, "c:")) != -1) {
+			switch (ch) {
+				case 'c': config_path = optarg; break;
+				default: break;
+			}
+		}
+
+		if (!config_path)
+			throw std::logic_error("usage: bomber -c config_path");
+
 		config cfg;
-		cfg.parse_config("config");
+		cfg.parse_config(config_path);
 
 		GET_CONFIG_PARAM(num_threads, int);
 		GET_CONFIG_PARAM(max_key_value, int);
