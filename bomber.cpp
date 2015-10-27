@@ -1,11 +1,15 @@
+#include "config.h"
 #include <elliptics/cppdef.h>
 #include <iostream>
 #include <fstream>
 #include <cstdlib>
 #include <csignal>
 
+
 using namespace ioremap::elliptics;
 
+
+config_params g_params;
 
 struct CommandCodes
 {
@@ -24,13 +28,10 @@ const CommandCodes g_codes[] = {
 	{8, "write_cache"}
 };
 
-static int MAX_KEY_VALUE = 10 * 1000 * 1000;
-static size_t MAX_DATA_SIZE = 64 * 1024; // 64 Kb
-
 struct helper
 {
 	static std::string rand_key() {
-		int v = rand() % MAX_KEY_VALUE;
+		int v = rand() % g_params.max_key_value;
 		return std::to_string(v);
 	}
 
@@ -38,7 +39,7 @@ struct helper
 		std::ifstream rnd("/dev/urandom", std::ifstream::binary | std::fstream::in);
 		if (!rnd)
 			throw std::logic_error("couldn't open /dev/urandom");
-		data_pointer ptr = data_pointer::allocate(MAX_DATA_SIZE);
+		data_pointer ptr = data_pointer::allocate(g_params.max_data_size);
 		rnd.read(reinterpret_cast<char *>(ptr.data()), ptr.size());
 		return ptr;
 	}
@@ -371,62 +372,67 @@ public:
 	}
 
 	void init(int argc, char *argv[]) {
-		if (argc < 4)
-			throw std::logic_error("usage: bomber <addr:port:family> <num_threads> <max_key_value> <max_data_size> <[command_name]* | 'all'>");
+		config cfg;
+		cfg.parse_config("config");
 
-		BH_LOG(m_log, DNET_LOG_INFO, "creating addr remote: %s", argv[1])
-			("source", "dnet_add_state");
+		GET_CONFIG_PARAM(num_threads, int);
+		GET_CONFIG_PARAM(max_key_value, int);
+		GET_CONFIG_PARAM(max_data_size, size_t);
+		GET_CONFIG_PARAM_VEC(remotes, std::string);
+		GET_CONFIG_PARAM_VEC(commands, std::string);
+		GET_CONFIG_PARAM_VEC(groups, int);
 
-		address addr = argv[1];
-		m_num_threads = std::stoi(argv[2]);
-		MAX_KEY_VALUE = std::stoi(argv[3]);
-		MAX_DATA_SIZE = std::stoi(argv[4]);
+		if (g_params.commands.empty())
+			throw std::logic_error("no commands given in config");
 
-		if (!strcmp(argv[5], "all")) {
+		if (g_params.commands[0] == "all") {
 			const size_t num_commands = sizeof(g_codes) / sizeof(g_codes[0]);
 			for (size_t i = 0; i < num_commands; ++i) {
 				m_commands.push_back(i);
 			}
 		} else {
-			for (int i = 5; i < argc; ++i) {
+			for (const auto &cmd : g_params.commands) {
 				const auto it = std::find_if(std::begin(g_codes), std::end(g_codes),
-						       [i, argv] (const CommandCodes &code) -> bool { return !strcmp(argv[i], code.command); } );
+							     [cmd] (const CommandCodes &code) -> bool { return cmd == code.command; } );
 
 				if (it == std::end(g_codes))
-					throw std::logic_error( "unknown command: " + std::string(argv[i]) );
+					throw std::logic_error("unknown command: " + cmd);
 
 				m_commands.push_back(it->code);
 			}
 		}
 
-		BH_LOG(m_log, DNET_LOG_INFO, "connecting to remote: %s", argv[1])
-			("source", "dnet_add_state");
-
-		m_node.add_remote(addr);
-
-		BH_LOG(m_log, DNET_LOG_INFO, "connected to remote: %s", argv[1])
-			("source", "dnet_add_state");
+		for (const auto &remote : g_params.remotes) {
+			BH_LOG(m_log, DNET_LOG_INFO, "creating addr remote: %s", remote)
+				("source", "dnet_add_state");
+			address addr = remote;
+			BH_LOG(m_log, DNET_LOG_INFO, "connecting to remote: %s", remote)
+				("source", "dnet_add_state");
+			m_node.add_remote(addr);
+			BH_LOG(m_log, DNET_LOG_INFO, "connected to remote: %s", remote)
+				("source", "dnet_add_state");
+		}
 
 		m_sess = std::make_shared<session>(m_node);
-		m_sess->set_groups({1});
+		m_sess->set_groups(g_params.groups);
 		m_sess->set_namespace("bomber");
 		m_sess->set_exceptions_policy(session::no_exceptions);
 	}
 
 	void shutdown() {
-		for (int i = 0; i < m_num_threads; ++i) {
+		for (int i = 0; i < g_params.num_threads; ++i) {
 			m_actions[i]->stop();
 		}
 
-		for (int i = 0; i < m_num_threads; ++i) {
+		for (int i = 0; i < g_params.num_threads; ++i) {
 			m_threads[i].join();
 		}
 	}
 
 	void run() {
-		m_actions.resize(m_num_threads);
-		m_threads.resize(m_num_threads);
-		for (int i = 0; i < m_num_threads; ++i) {
+		m_actions.resize(g_params.num_threads);
+		m_threads.resize(g_params.num_threads);
+		for (int i = 0; i < g_params.num_threads; ++i) {
 			m_actions[i] = prepare_random_actions();
 			const int times = -1; // unlimited
 			m_threads[i] = std::thread(thread_fun, m_actions[i], times);
@@ -464,7 +470,6 @@ private:
 	file_logger m_log;
 	node m_node;
 	std::shared_ptr<session> m_sess;
-	int m_num_threads;
 	std::vector<std::thread> m_threads;
 	std::vector<actions_ptr> m_actions;
 	std::vector<int> m_commands;
