@@ -39,7 +39,9 @@ struct helper
 		std::ifstream rnd("/dev/urandom", std::ifstream::binary | std::fstream::in);
 		if (!rnd)
 			throw std::logic_error("couldn't open /dev/urandom");
-		data_pointer ptr = data_pointer::allocate(g_params.max_data_size);
+
+		const size_t data_size = rand() % g_params.max_data_size + 1;
+		data_pointer ptr = data_pointer::allocate(data_size);
 		rnd.read(reinterpret_cast<char *>(ptr.data()), ptr.size());
 		return ptr;
 	}
