@@ -4,9 +4,41 @@
 #include <fstream>
 #include <cstdlib>
 #include <csignal>
+#include <thread>
+
+#include <blackhole/attribute.hpp>
+#include <blackhole/attributes.hpp>
+#include <blackhole/config/json.hpp>
+#include <blackhole/extensions/facade.hpp>
+#include <blackhole/extensions/writer.hpp>
+#include <blackhole/registry.hpp>
+#include <blackhole/root.hpp>
 
 
 using namespace ioremap::elliptics;
+
+
+namespace logging {
+
+enum severity {
+    debug = 0,
+    notice,
+    info,
+    warning,
+    error
+};
+
+} // namespace logging
+
+#define __LOG__(__log__, __severity__, ...)	     \
+    ::blackhole::logger_facade<blackhole::logger_t>( \
+	    *__log__).log(__severity__, __VA_ARGS__)
+
+#define LOG_DEBUG(__log__, ...) __LOG__(__log__, ::logging::debug, __VA_ARGS__)
+#define LOG_NOTICE(__log__, ...) __LOG__(__log__, ::logging::notice, __VA_ARGS__)
+#define LOG_INFO(__log__, ...) __LOG__(__log__, ::logging::info, __VA_ARGS__)
+#define LOG_WARNING(__log__, ...) __LOG__(__log__, ::logging::warning, __VA_ARGS__)
+#define LOG_ERROR(__log__, ...) __LOG__(__log__, ::logging::error, __VA_ARGS__)
 
 
 config_params g_params;
@@ -51,7 +83,7 @@ struct helper
 class command
 {
 public:
-	command(file_logger *log, const std::shared_ptr<session> &sess)
+	command(dnet_logger *log, const std::shared_ptr<session> &sess)
 	: m_log(log),
 	 m_sess(sess)
 	{}
@@ -64,7 +96,7 @@ public:
 	virtual void wait_result() = 0;
 
 protected:
-	file_logger *m_log;
+	dnet_logger *m_log;
 	std::shared_ptr<session> m_sess;
 };
 
@@ -95,7 +127,7 @@ private:
 class writer : public command
 {
 public:
-	writer(file_logger *log, const std::shared_ptr<session> &sess)
+	writer(dnet_logger *log, const std::shared_ptr<session> &sess)
 	: command(log, sess)
 	{}
 
@@ -117,7 +149,7 @@ private:
 class plain_writer : public command
 {
 public:
-	plain_writer(file_logger *log, const std::shared_ptr<session> &sess)
+	plain_writer(dnet_logger *log, const std::shared_ptr<session> &sess)
 	: command(log, sess)
 	{}
 
@@ -154,7 +186,7 @@ private:
 class cache_writer : public command
 {
 public:
-	cache_writer(file_logger *log, const std::shared_ptr<session> &sess)
+	cache_writer(dnet_logger *log, const std::shared_ptr<session> &sess)
 	: command(log, sess)
 	{}
 
@@ -176,7 +208,7 @@ private:
 class reader : public command
 {
 public:
-	reader(file_logger *log, const std::shared_ptr<session> &sess)
+	reader(dnet_logger *log, const std::shared_ptr<session> &sess)
 	: command(log, sess)
 	{}
 
@@ -202,7 +234,7 @@ private:
 class remover : public command
 {
 public:
-	remover(file_logger *log, const std::shared_ptr<session> &sess)
+	remover(dnet_logger *log, const std::shared_ptr<session> &sess)
 	: command(log, sess)
 	{}
 
@@ -223,7 +255,7 @@ private:
 class backend_readonly_setter : public command
 {
 public:
-	backend_readonly_setter(file_logger *log, const std::shared_ptr<session> &sess)
+	backend_readonly_setter(dnet_logger *log, const std::shared_ptr<session> &sess)
 	: command(log, sess)
 	{}
 
@@ -247,7 +279,7 @@ private:
 class backend_writable_setter : public command
 {
 public:
-	backend_writable_setter(file_logger *log, const std::shared_ptr<session> &sess)
+	backend_writable_setter(dnet_logger *log, const std::shared_ptr<session> &sess)
 	: command(log, sess)
 	{}
 
@@ -271,7 +303,7 @@ private:
 class defrag_starter : public command
 {
 public:
-	defrag_starter(file_logger *log, const std::shared_ptr<session> &sess)
+	defrag_starter(dnet_logger *log, const std::shared_ptr<session> &sess)
 	: command(log, sess)
 	{}
 
@@ -294,7 +326,7 @@ private:
 class monitor_stat_getter : public command
 {
 public:
-	monitor_stat_getter(file_logger *log, const std::shared_ptr<session> &sess)
+	monitor_stat_getter(dnet_logger *log, const std::shared_ptr<session> &sess)
 	: command(log, sess)
 	{}
 
@@ -368,8 +400,8 @@ class bomber
 {
 public:
 	bomber()
-	: m_log("/dev/stdout", DNET_LOG_DEBUG),
-	 m_node(logger(m_log, blackhole::log::attributes_t()))
+	: m_node(make_file_logger("/dev/stdout", DNET_LOG_DEBUG)),
+	 m_log(m_node.get_logger())
 	{
 	}
 
@@ -418,14 +450,11 @@ public:
 		}
 
 		for (const auto &remote : g_params.remotes) {
-			BH_LOG(m_log, DNET_LOG_INFO, "creating addr remote: %s", remote)
-				("source", "dnet_add_state");
+			LOG_INFO(m_log, "creating addr remote: %s", remote);
 			address addr = remote;
-			BH_LOG(m_log, DNET_LOG_INFO, "connecting to remote: %s", remote)
-				("source", "dnet_add_state");
+			LOG_INFO(m_log, "connecting to remote: %s", remote);
 			m_node.add_remote(addr);
-			BH_LOG(m_log, DNET_LOG_INFO, "connected to remote: %s", remote)
-				("source", "dnet_add_state");
+			LOG_INFO(m_log, "connected to remote: %s", remote);
 		}
 
 		m_sess = std::make_shared<session>(m_node);
@@ -467,23 +496,24 @@ private:
 
 	command *generate_random_cmd() {
 		const int i = rand() % m_commands.size();
+		auto log = m_log.get();
 		switch (m_commands[i]) {
-			case 0: return new writer(&m_log, m_sess);
-			case 1: return new plain_writer(&m_log, m_sess);
-			case 2: return new reader(&m_log, m_sess);
-			case 3: return new remover(&m_log, m_sess);
-			case 4: return new backend_readonly_setter(&m_log, m_sess);
-			case 5: return new backend_writable_setter(&m_log, m_sess);
-			case 6: return new defrag_starter(&m_log, m_sess);
-			case 7: return new monitor_stat_getter(&m_log, m_sess);
-			case 8: return new cache_writer(&m_log, m_sess);
+			case 0: return new writer(log, m_sess);
+			case 1: return new plain_writer(log, m_sess);
+			case 2: return new reader(log, m_sess);
+			case 3: return new remover(log, m_sess);
+			case 4: return new backend_readonly_setter(log, m_sess);
+			case 5: return new backend_writable_setter(log, m_sess);
+			case 6: return new defrag_starter(log, m_sess);
+			case 7: return new monitor_stat_getter(log, m_sess);
+			case 8: return new cache_writer(log, m_sess);
 		}
 		return nullptr;
 	}
 
 private:
-	file_logger m_log;
 	node m_node;
+	std::unique_ptr<dnet_logger> m_log;
 	std::shared_ptr<session> m_sess;
 	std::vector<std::thread> m_threads;
 	std::vector<actions_ptr> m_actions;

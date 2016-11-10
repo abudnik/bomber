@@ -5,8 +5,8 @@ set(CMAKE_CXX_FLAGS "-Wall -pedantic -g -std=c++0x -O2")
 find_package(Boost REQUIRED COMPONENTS iostreams thread regex program_options system filesystem)
 
 set(REQUIRED_LIBRARIES
-  elliptics_cpp
   elliptics_client
+  blackhole
   ${Boost_LIBRARIES}
 )
 
