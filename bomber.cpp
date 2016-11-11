@@ -461,6 +461,7 @@ public:
 		m_sess->set_groups(g_params.groups);
 		m_sess->set_namespace("bomber");
 		m_sess->set_exceptions_policy(session::no_exceptions);
+		m_sess->set_timeout(60 * 60);
 	}
 
 	void shutdown() {
