@@ -13,6 +13,8 @@ struct config_params
 	size_t max_data_size;
 	std::vector<std::string> remotes;
 	std::vector<std::string> commands;
+	size_t num_commands;
+	int times;
 	std::vector<int> groups;
 };
 

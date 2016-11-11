@@ -427,6 +427,8 @@ public:
 		GET_CONFIG_PARAM(max_data_size, size_t);
 		GET_CONFIG_PARAM_VEC(remotes, std::string);
 		GET_CONFIG_PARAM_VEC(commands, std::string);
+		GET_CONFIG_PARAM(num_commands, size_t);
+		GET_CONFIG_PARAM(times, int);
 		GET_CONFIG_PARAM_VEC(groups, int);
 
 		if (g_params.commands.empty())
@@ -479,7 +481,7 @@ public:
 		m_threads.resize(g_params.num_threads);
 		for (int i = 0; i < g_params.num_threads; ++i) {
 			m_actions[i] = prepare_random_actions();
-			const int times = -1; // unlimited
+			const int times = g_params.times;
 			m_threads[i] = std::thread(thread_fun, m_actions[i], times);
 		}
 	}
@@ -487,7 +489,7 @@ public:
 private:
 	actions_ptr prepare_random_actions() {
 		actions_ptr act = std::make_shared<actions>();
-		const int num_commands = 10;
+		const int num_commands = g_params.num_commands;
 		for (int i = 0; i < num_commands; ++i) {
 			command_ptr cmd(generate_random_cmd());
 			act->add(cmd);

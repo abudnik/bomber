@@ -4,5 +4,7 @@
 "max_data_size":   128000,
 "remotes":         "s33h.xxx.yandex.net:1025:2 abudnik-trusty.haze.yandex.net:1025:10",
 "commands":        "write",
+"num_commands":    10,
+"times":           -1,
 "groups":          "1 2"
 }
